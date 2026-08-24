@@ -2,6 +2,10 @@ export function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
 }
 
+export function pick(a) {
+  return a[Math.floor(Math.random() * a.length)]
+}
+
 export function esc(s) {
   return (s || '')
     .replace(/&/g, '&amp;')
