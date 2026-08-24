@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 构建期生成物（清单/缩略图/大图由 scripts/build-manifest.mjs 生成）
+public/photos/thumbs/
+public/photos/large/
+public/photos/manifest.json
+scripts/geo-cache.json
+scripts/ai-cache.json

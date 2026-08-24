@@ -41,6 +41,16 @@ header h1 {
 header h1 span {
   color: var(--accent);
 }
+header .count {
+  color: var(--muted);
+  font-size: 12px;
+}
+footer {
+  text-align: center;
+  color: #5c6472;
+  font-size: 12px;
+  padding: 0 0 40px;
+}
 button,
 .upload-btn {
   cursor: pointer;
