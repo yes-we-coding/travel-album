@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>行摄集 · 旅行相册</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel2:#1d212b; --line:#2a2f3a;
+    --text:#e6e8ee; --muted:#8b93a3; --accent:#e8a15c; --accent2:#4f9cf9;
+    --danger:#e06c75;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{background:var(--bg); color:var(--text);
+    font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;}
+  header{position:sticky; top:0; z-index:10; display:flex; align-items:center; gap:12px;
+    padding:14px 22px; background:rgba(15,17,21,.92); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);}
+  header h1{font-size:20px; font-weight:700; letter-spacing:2px; margin-right:auto}
+  header h1 span{color:var(--accent)}
+  button,.upload-btn{cursor:pointer; border:1px solid var(--line); background:var(--panel2);
+    color:var(--text); border-radius:8px; padding:8px 14px; font-size:13px; transition:.15s}
+  button:hover,.upload-btn:hover{border-color:var(--accent); color:var(--accent)}
+  .upload-btn{background:var(--accent); border-color:var(--accent); color:#20160a; font-weight:600}
+  .upload-btn:hover{filter:brightness(1.1); color:#20160a}
+  main{max-width:1280px; margin:0 auto; padding:20px 22px 80px}
+  #dropzone{border:2px dashed var(--line); border-radius:14px; padding:34px; text-align:center;
+    color:var(--muted); margin-bottom:22px; transition:.15s; font-size:14px}
+  #dropzone.over{border-color:var(--accent); color:var(--accent); background:rgba(232,161,92,.06)}
+  .hidden{display:none !important}
+  /* 管理视图 */
+  #manageView{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:18px}
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:12px; overflow:hidden;
+    display:flex; flex-direction:column}
+  .card img{width:100%; height:210px; object-fit:cover; display:block; background:#000}
+  .card .body{padding:12px 14px 14px; display:flex; flex-direction:column; gap:8px}
+  .card input.title{background:transparent; border:none; border-bottom:1px solid transparent;
+    color:var(--text); font-size:15px; font-weight:600; outline:none; padding:2px 0}
+  .card input.title:focus{border-bottom-color:var(--accent)}
+  .card textarea{background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); font-size:13px; line-height:1.7; padding:8px 10px; resize:vertical;
+    min-height:88px; outline:none; font-family:inherit}
+  .card textarea:focus{border-color:var(--accent2)}
+  .card .meta{color:var(--muted); font-size:12px}
+  .card .ops{display:flex; gap:8px}
+  .card .ops button{padding:5px 10px; font-size:12px}
+  .card .ops button.del:hover{border-color:var(--danger); color:var(--danger)}
+  .card .status{color:var(--accent2); font-size:12px}
+  /* 浏览视图（博客） */
+  #blogView{columns:320px; column-gap:18px}
+  #blogView figure{break-inside:avoid; margin:0 0 18px; background:var(--panel);
+    border:1px solid var(--line); border-radius:12px; overflow:hidden; cursor:zoom-in}
+  #blogView img{width:100%; display:block}
+  #blogView figcaption{padding:12px 14px}
+  #blogView figcaption .t{font-weight:600; font-size:15px; margin-bottom:6px}
+  #blogView figcaption .c{color:var(--muted); font-size:13px; line-height:1.8}
+  #blogView figcaption .m{color:#5c6472; font-size:11px; margin-top:8px}
+  .empty{color:var(--muted); text-align:center; padding:60px 0; font-size:14px}
+  /* 灯箱 */
+  #lightbox{position:fixed; inset:0; background:rgba(5,6,9,.92); z-index:50;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    padding:30px; gap:14px; cursor:zoom-out}
+  #lightbox img{max-width:92vw; max-height:74vh; border-radius:8px; box-shadow:0 10px 60px #000}
+  #lightbox .cap{max-width:760px; text-align:center; color:var(--text); font-size:14px; line-height:1.9}
+  #lightbox .cap .t{font-size:17px; font-weight:700; margin-bottom:6px}
+  #lightbox .cap .m{color:var(--muted); font-size:12px; margin-top:8px}
+  /* 设置弹窗 */
+  dialog{background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:12px;
+    width:min(520px,92vw); padding:20px 22px}
+  dialog::backdrop{background:rgba(0,0,0,.6)}
+  dialog h2{font-size:16px; margin-bottom:6px}
+  dialog p.hint{color:var(--muted); font-size:12px; line-height:1.7; margin-bottom:14px}
+  dialog label{display:block; font-size:12px; color:var(--muted); margin:10px 0 4px}
+  dialog input{width:100%; background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:8px 10px; font-size:13px; outline:none}
+  dialog input:focus{border-color:var(--accent2)}
+  dialog .ops{display:flex; justify-content:flex-end; gap:10px; margin-top:18px}
+  #toast{position:fixed; left:50%; bottom:34px; transform:translateX(-50%); background:var(--panel2);
+    border:1px solid var(--line); color:var(--text); border-radius:10px; padding:10px 18px;
+    font-size:13px; z-index:99; opacity:0; pointer-events:none; transition:.25s}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>行摄<span>集</span></h1>
+  <button id="btnView">切换到浏览模式</button>
+  <button id="btnExport">导出静态相册</button>
+  <button id="btnSettings">AI 描述设置</button>
+  <label class="upload-btn" for="fileInput">上传照片</label>
+  <input type="file" id="fileInput" accept="image/*" multiple hidden>
+</header>
+<main>
+  <div id="dropzone">把旅游照片拖到这里，或点右上角「上传照片」，支持多选。<br>上传后自动生成标题和文字描述（配置 AI key 后由视觉模型撰写，否则用 EXIF + 画面分析生成）。</div>
+  <section id="manageView"></section>
+  <section id="blogView" class="hidden"></section>
+</main>
+
+<div id="lightbox" class="hidden"></div>
+
+<dialog id="settingsDialog">
+  <h2>AI 描述设置（可选）</h2>
+  <p class="hint">填写兼容 OpenAI 协议的视觉模型接口后，上传照片会调用模型写一段旅行随笔式描述。
+  不填则使用本地兜底方案（EXIF 时间/地点 + 画面色彩分析）。key 只保存在本机浏览器 localStorage。</p>
+  <label>API Base URL</label>
+  <input id="cfgBase" placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1">
+  <label>API Key</label>
+  <input id="cfgKey" type="password" placeholder="sk-...">
+  <label>模型名</label>
+  <input id="cfgModel" placeholder="qwen-vl-max">
+  <div class="ops">
+    <button id="cfgClear">清空</button>
+    <button id="cfgSave" class="upload-btn" style="color:#20160a">保存</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+var $ = function(s){ return document.querySelector(s); };
+var fileInput=$('#fileInput'), manageView=$('#manageView'), blogView=$('#blogView'),
+    dropzone=$('#dropzone'), lightbox=$('#lightbox'), dialog=$('#settingsDialog');
+
+/* ---------- 小工具 ---------- */
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
+function toast(msg){
+  var t=$('#toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._h); t._h=setTimeout(function(){ t.classList.remove('show'); },2600);
+}
+function readFileAsDataURL(f){
+  return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){res(r.result);}; r.onerror=rej; r.readAsDataURL(f); });
+}
+function readFileAsArrayBuffer(f){
+  return new Promise(function(res,rej){ var r=new FileReader(); r.onload=function(){res(r.result);}; r.onerror=rej; r.readAsArrayBuffer(f); });
+}
+
+/* ---------- IndexedDB ---------- */
+var db=null;
+function openDB(){
+  return new Promise(function(res,rej){
+    var rq=indexedDB.open('travel-album',1);
+    rq.onupgradeneeded=function(){ rq.result.createObjectStore('photos',{keyPath:'id'}); };
+    rq.onsuccess=function(){ db=rq.result; res(db); };
+    rq.onerror=function(){ rej(rq.error); };
+  });
+}
+function idbAll(){
+  return new Promise(function(res,rej){
+    var tx=db.transaction('photos','readonly').objectStore('photos').getAll();
+    tx.onsuccess=function(){ res(tx.result||[]); }; tx.onerror=function(){ rej(tx.error); };
+  });
+}
+function idbPut(rec){
+  return new Promise(function(res){ var tx=db.transaction('photos','readwrite');
+    tx.objectStore('photos').put(rec); tx.oncomplete=res; });
+}
+function idbDel(id){
+  return new Promise(function(res){ var tx=db.transaction('photos','readwrite');
+    tx.objectStore('photos').delete(id); tx.oncomplete=res; });
+}
+
+/* ---------- EXIF 解析（JPEG：拍摄时间 + GPS） ---------- */
+function exifString(dv,o,len){
+  var s=''; for(var i=0;i<len;i++){ var c=dv.getUint8(o+i); if(c===0)break; s+=String.fromCharCode(c); } return s;
+}
+function parseExif(buf){
+  try{
+    var dv=new DataView(buf);
+    if(dv.byteLength<4||dv.getUint16(0)!==0xFFD8) return null;
+    var off=2;
+    while(off+4<dv.byteLength){
+      var m=dv.getUint16(off);
+      if((m&0xFF00)!==0xFF00) break;
+      var len=dv.getUint16(off+2);
+      if(m===0xFFE1){
+        var start=off+4;
+        if(exifString(dv,start,6)!=='Exif\0\0') return null;
+        var tiff=start+6;
+        var little=dv.getUint16(tiff)===0x4949;
+        var g16=function(o){return dv.getUint16(tiff+o,little);};
+        var g32=function(o){return dv.getUint32(tiff+o,little);};
+        var out={dt:null,gps:null};
+        var ifd0=tiff+g32(4), exifPtr=0, gpsPtr=0, n=g16(ifd0), i, e, t;
+        for(i=0;i<n;i++){ e=ifd0+2+i*12; t=g16(e);
+          if(t===0x8769) exifPtr=g32(e+8); else if(t===0x8825) gpsPtr=g32(e+8); }
+        if(exifPtr){ var p=tiff+exifPtr, m2=g16(p);
+          for(i=0;i<m2;i++){ e=p+2+i*12; t=g16(e);
+            if(t===0x9003||t===0x9004){ out.dt=exifString(dv,tiff+g32(e+8),19); break; } } }
+        if(gpsPtr){ var gp=tiff+gpsPtr, m3=g16(gp), lat=null, lon=null, latRef='N', lonRef='E';
+          var rats=function(o){ var v=[]; for(var k=0;k<3;k++){ var a=g32(o+k*8), b=g32(o+k*8+4); v.push(b?a/b:0);} return v; };
+          for(i=0;i<m3;i++){ e=gp+2+i*12; t=g16(e); var o2=g32(e+8);
+            if(t===1) latRef=exifString(dv,tiff+o2,1);
+            else if(t===2) lat=rats(tiff+o2);
+            else if(t===3) lonRef=exifString(dv,tiff+o2,1);
+            else if(t===4) lon=rats(tiff+o2); }
+          if(lat&&lon){ var d=function(v){return v[0]+v[1]/60+v[2]/3600;};
+            out.gps={ lat:d(lat)*(latRef==='S'?-1:1), lon:d(lon)*(lonRef==='W'?-1:1) }; } }
+        return out;
+      }
+      off+=2+len;
+    }
+  }catch(err){}
+  return null;
+}
+
+/* ---------- 画面分析 ---------- */
+function analyzeImage(img){
+  try{
+    var c=document.createElement('canvas'); c.width=24; c.height=24;
+    var ctx=c.getContext('2d'); ctx.drawImage(img,0,0,24,24);
+    var d=ctx.getImageData(0,0,24,24).data;
+    var lum=0, blue=0, green=0, warm=0, total=d.length/4;
+    for(var i=0;i<d.length;i+=4){
+      var r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255;
+      var mx=Math.max(r,g,b), mn=Math.min(r,g,b), l=(mx+mn)/2;
+      lum+=l;
+      var s= mx===mn?0:(mx-mn)/(1-Math.abs(2*l-1));
+      if(s>0.18){
+        var h;
+        if(mx===r) h=((g-b)/(mx-mn))%6; else if(mx===g) h=(b-r)/(mx-mn)+2; else h=(r-g)/(mx-mn)+4;
+        h*=60; if(h<0)h+=360;
+        if(h>=190&&h<=260) blue++;
+        else if(h>=75&&h<=170) green++;
+        else if((h<=45||h>=330)) warm++;
+      }
+    }
+    return { lum:lum/total*255, blue:blue/total, green:green/total, warm:warm/total };
+  }catch(err){ return { lum:128, blue:0, green:0, warm:0 }; }
+}
+
+/* ---------- 兜底文案生成 ---------- */
+function heuristicCaption(meta, an){
+  var parts=[];
+  parts.push(pick(['路上的某一瞬，','快门按下的那一刻，','走着走着，','没什么特别的理由，','偶然抬头，']));
+  if(an.blue>0.22) parts.push(pick(['天空澄澈，云也走得慢。','抬头是一片通透的蓝。','天很高，风很轻。']));
+  if(an.green>0.18) parts.push(pick(['满目绿意，风里都是草木的味道。','山野把绿色一直铺到天边。','草木正好，生机扑面。']));
+  if(an.warm>0.22) parts.push(pick(['暖光给一切都镀了边。','夕阳调了个温柔的色调。','橙黄的光落在路上，人也慢了下来。']));
+  if(parts.length===1){
+    if(an.lum>170) parts.push(pick(['阳光正好，适合漫无目的地走。','光线明亮，心情也跟着敞亮。']));
+    else if(an.lum<80) parts.push(pick(['夜色安静，灯火星稀。','暗下来的世界反而更清晰。']));
+    else parts.push(pick(['光线柔和，一切都刚刚好。','不浓不淡的光，最适合记录。']));
+  }
+  var hour=null;
+  if(meta.dt){ var hm=meta.dt.match(/(\d{2}):\d{2}:\d{2}/); if(hm) hour=+hm[1]; }
+  if(hour!==null){
+    if(hour>=5&&hour<8) parts.push('清晨出发，整个世界还没醒。');
+    else if(hour>=17&&hour<19) parts.push('黄昏时分，影子被拉得很长。');
+    else if(hour>=19||hour<5) parts.push('夜里的行程，别有滋味。');
+  }
+  parts.push(pick(['就想把这一刻留下来。','旅行的意义大抵如此。','留个纪念，日后慢慢想起。','']));
+  return parts.filter(Boolean).join('');
+}
+function defaultTitle(meta){
+  if(meta.place) return meta.place;
+  if(meta.dt){ var d=meta.dt.replace(/^(\d{4})[:\/](\d{2})[:\/](\d{2}).*/,'$1年$2月$3日'); return d+' 的旅行'; }
+  return '未命名旅程';
+}
+
+/* ---------- 逆地理编码（可选，失败静默） ---------- */
+function reverseGeo(lat,lon){
+  return new Promise(function(res){
+    var ctrl=new AbortController(); var to=setTimeout(function(){ctrl.abort(); res(null);},4000);
+    fetch('https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat='+lat+'&lon='+lon+'&accept-language=zh',
+      {signal:ctrl.signal, headers:{'Accept':'application/json'}})
+      .then(function(r){ return r.json(); })
+      .then(function(j){ clearTimeout(to);
+        if(j&&j.display_name){ var p=j.display_name.split(','); res(p.slice(0,2).join(' ').trim()); }
+        else res(null); })
+      .catch(function(){ clearTimeout(to); res(null); });
+  });
+}
+
+/* ---------- AI 描述 ---------- */
+function getCfg(){
+  try{ return JSON.parse(localStorage.getItem('travel-album-cfg')||'null'); }catch(e){ return null; }
+}
+function aiCaption(dataURL){
+  var cfg=getCfg(); if(!cfg||!cfg.key) return Promise.resolve(null);
+  var base=(cfg.base||'https://dashscope.aliyuncs.com/compatible-mode/v1').replace(/\/+$/,'');
+  var body={ model:cfg.model||'qwen-vl-max',
+    messages:[{role:'user',content:[
+      {type:'image_url',image_url:{url:dataURL}},
+      {type:'text',text:'这是一张旅行照片。请用中文写一段 80 字左右的旅行手记风格描述：直接描写画面与当下的心境，不要列点，不要以“这张照片”开头，不要编造具体地名。'}
+    ]}], max_tokens:300 };
+  return fetch(base+'/chat/completions',{
+    method:'POST', headers:{'Content-Type':'application/json','Authorization':'Bearer '+cfg.key},
+    body:JSON.stringify(body)
+  }).then(function(r){ if(!r.ok) throw new Error('http '+r.status); return r.json(); })
+    .then(function(j){ var t=j.choices&&j.choices[0]&&j.choices[0].message&&j.choices[0].message.content;
+      return (t||'').trim()||null; })
+    .catch(function(err){ toast('AI 描述调用失败，已用本地方案：'+err.message); return null; });
+}
+/* 给 AI 的缩小版 dataURL，省流量 */
+function downscaledDataURL(img,max){
+  var w=img.naturalWidth,h=img.naturalHeight;
+  var s=Math.min(1,(max||1024)/Math.max(w,h));
+  var c=document.createElement('canvas'); c.width=Math.round(w*s); c.height=Math.round(h*s);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',0.85);
+}
+
+/* ---------- 状态与渲染 ---------- */
+var photos=[];   /* {id,url,blob,title,caption,meta,created} */
+var viewMode='manage';
+
+function metaLine(p){
+  var bits=[];
+  if(p.meta.dt) bits.push(p.meta.dt.replace(' ',', ').replace(/\//g,'-'));
+  if(p.meta.place) bits.push(p.meta.place);
+  else if(p.meta.gps) bits.push(p.meta.gps.lat.toFixed(2)+', '+p.meta.gps.lon.toFixed(2));
+  return bits.join(' · ');
+}
+
+function renderManage(){
+  manageView.innerHTML='';
+  dropzone.classList.toggle('hidden', viewMode!=='manage');
+  if(viewMode!=='manage') return;
+  if(!photos.length){ manageView.innerHTML='<div class="empty" style="grid-column:1/-1">相册还是空的，上传第一张旅行照片吧。</div>'; return; }
+  photos.slice().sort(function(a,b){ return (b.meta.dt||'').localeCompare(a.meta.dt||'')||b.created-a.created; })
+  .forEach(function(p){
+    var card=document.createElement('div'); card.className='card'; card.dataset.id=p.id;
+    var img=document.createElement('img'); img.src=p.url;
+    var body=document.createElement('div'); body.className='body';
+    var ti=document.createElement('input'); ti.className='title'; ti.value=p.title;
+    ti.addEventListener('input',function(){ p.title=ti.value; idbPut(toRec(p)); });
+    var ta=document.createElement('textarea'); ta.value=p.caption;
+    ta.addEventListener('input',function(){ p.caption=ta.value; idbPut(toRec(p)); });
+    var meta=document.createElement('div'); meta.className='meta'; meta.textContent=metaLine(p)||' ';
+    var ops=document.createElement('div'); ops.className='ops';
+    var re=document.createElement('button'); re.textContent='重新生成描述';
+    re.addEventListener('click',function(){ regen(p,ta,re); });
+    var del=document.createElement('button'); del.className='del'; del.textContent='删除';
+    del.addEventListener('click',function(){
+      if(!confirm('删除这张照片？')) return;
+      idbDel(p.id); photos=photos.filter(function(x){return x.id!==p.id;});
+      URL.revokeObjectURL(p.url); renderManage(); renderBlog();
+    });
+    ops.appendChild(re); ops.appendChild(del);
+    body.appendChild(ti); body.appendChild(ta); body.appendChild(meta); body.appendChild(ops);
+    card.appendChild(img); card.appendChild(body);
+    manageView.appendChild(card);
+  });
+}
+function toRec(p){ return {id:p.id, blob:p.blob, title:p.title, caption:p.caption, meta:p.meta, created:p.created}; }
+
+function regen(p,ta,btn){
+  btn.disabled=true; btn.textContent='生成中…';
+  var img=new Image();
+  var done=function(text){
+    if(text){ p.caption=text; ta.value=text; idbPut(toRec(p)); }
+    btn.disabled=false; btn.textContent='重新生成描述';
+  };
+  img.onload=function(){
+    aiCaption(downscaledDataURL(img,1024)).then(function(t){
+      if(t) return done(t);
+      done(heuristicCaption(p.meta, analyzeImage(img)));
+    });
+  };
+  img.onerror=function(){ done(heuristicCaption(p.meta,{lum:128,blue:0,green:0,warm:0})); };
+  img.src=p.url;
+}
+
+function renderBlog(){
+  blogView.innerHTML='';
+  if(viewMode!=='blog') return;
+  if(!photos.length){ blogView.innerHTML='<div class="empty">相册还是空的。</div>'; return; }
+  photos.slice().sort(function(a,b){ return (a.meta.dt||'').localeCompare(b.meta.dt||'')||a.created-b.created; })
+  .forEach(function(p){
+    var fig=document.createElement('figure');
+    var img=document.createElement('img'); img.src=p.url; img.loading='lazy';
+    var cap=document.createElement('figcaption');
+    var t=document.createElement('div'); t.className='t'; t.textContent=p.title||'未命名';
+    var c=document.createElement('div'); c.className='c'; c.textContent=p.caption||'';
+    cap.appendChild(t); cap.appendChild(c);
+    var ml=metaLine(p);
+    if(ml){ var m=document.createElement('div'); m.className='m'; m.textContent=ml; cap.appendChild(m); }
+    fig.appendChild(img); fig.appendChild(cap);
+    fig.addEventListener('click',function(){ openLightbox(p); });
+    blogView.appendChild(fig);
+  });
+}
+function openLightbox(p){
+  lightbox.innerHTML='';
+  var img=document.createElement('img'); img.src=p.url;
+  var cap=document.createElement('div'); cap.className='cap';
+  cap.innerHTML='<div class="t"></div><div class="c"></div><div class="m"></div>';
+  cap.children[0].textContent=p.title||'';
+  cap.children[1].textContent=p.caption||'';
+  cap.children[2].textContent=metaLine(p);
+  lightbox.appendChild(img); lightbox.appendChild(cap);
+  lightbox.classList.remove('hidden');
+}
+lightbox.addEventListener('click',function(){ lightbox.classList.add('hidden'); });
+
+/* ---------- 上传处理 ---------- */
+function addFiles(files){
+  Array.prototype.forEach.call(files,function(f){
+    if(!/^image\//.test(f.type)){ toast('跳过非图片文件：'+f.name); return; }
+    processFile(f);
+  });
+}
+function processFile(f){
+  toast('处理中：'+f.name);
+  Promise.all([readFileAsDataURL(f), readFileAsArrayBuffer(f)]).then(function(rs){
+    var dataURL=rs[0], buf=rs[1];
+    var img=new Image();
+    img.onload=function(){
+      var ex=parseExif(buf)||{};
+      var meta={ dt:ex.dt||null, gps:ex.gps||null, place:null, w:img.naturalWidth, h:img.naturalHeight };
+      var an=analyzeImage(img);
+      var p={ id:uid(), blob:f, url:URL.createObjectURL(f), title:'', caption:'', meta:meta, created:Date.now() };
+      photos.push(p);
+      renderManage(); renderBlog();
+      var finish=function(){
+        if(!p.title) p.title=defaultTitle(meta);
+        if(!p.caption) p.caption=heuristicCaption(meta,an);
+        idbPut(toRec(p)); renderManage(); renderBlog();
+        toast('已加入相册：'+p.title);
+      };
+      var chain=Promise.resolve();
+      if(meta.gps){ chain=reverseGeo(meta.gps.lat,meta.gps.lon).then(function(pl){ meta.place=pl; }); }
+      chain.then(function(){
+        return aiCaption(downscaledDataURL(img,1024)).then(function(t){ if(t) p.caption=t; });
+      }).then(finish);
+    };
+    img.onerror=function(){ toast('无法解码图片：'+f.name); };
+    img.src=dataURL;
+  }).catch(function(err){ toast('读取失败：'+f.name); });
+}
+fileInput.addEventListener('change',function(){ addFiles(fileInput.files); fileInput.value=''; });
+['dragenter','dragover'].forEach(function(ev){
+  dropzone.addEventListener(ev,function(e){ e.preventDefault(); dropzone.classList.add('over'); });
+});
+['dragleave','drop'].forEach(function(ev){
+  dropzone.addEventListener(ev,function(e){ e.preventDefault(); dropzone.classList.remove('over'); });
+});
+dropzone.addEventListener('drop',function(e){ if(e.dataTransfer&&e.dataTransfer.files) addFiles(e.dataTransfer.files); });
+document.addEventListener('dragover',function(e){ e.preventDefault(); });
+document.addEventListener('drop',function(e){ e.preventDefault(); if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length) addFiles(e.dataTransfer.files); });
+
+/* ---------- 视图切换 / 导出 / 设置 ---------- */
+$('#btnView').addEventListener('click',function(){
+  viewMode = viewMode==='manage' ? 'blog' : 'manage';
+  manageView.classList.toggle('hidden', viewMode!=='manage');
+  blogView.classList.toggle('hidden', viewMode!=='blog');
+  $('#btnView').textContent = viewMode==='manage' ? '切换到浏览模式' : '切换到管理模式';
+  renderManage(); renderBlog();
+});
+$('#btnExport').addEventListener('click',function(){
+  if(!photos.length){ toast('相册是空的，先上传照片'); return; }
+  toast('导出中，照片多的话要等几秒…');
+  var sorted=photos.slice().sort(function(a,b){ return (a.meta.dt||'').localeCompare(b.meta.dt||'')||a.created-b.created; });
+  Promise.all(sorted.map(function(p){ return readFileAsDataURL(p.blob); })).then(function(urls){
+    var figs=sorted.map(function(p,i){
+      var ml=metaLine(p);
+      return '<figure><img src="'+urls[i]+'" alt=""><figcaption><div class="t">'+esc(p.title)+'</div><div class="c">'+esc(p.caption)+'</div>'+(ml?'<div class="m">'+esc(ml)+'</div>':'')+'</figcaption></figure>';
+    }).join('\n');
+    var html='<!DOCTYPE html><html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>行摄集 · 我的旅行相册</title><style>'
+      +'body{background:#0f1115;color:#e6e8ee;font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;margin:0}'
+      +'header{max-width:1100px;margin:0 auto;padding:48px 20px 8px}h1{letter-spacing:3px}h1 span{color:#e8a15c}'
+      +'.sub{color:#8b93a3;font-size:13px;margin-top:6px}'
+      +'main{max-width:1100px;margin:0 auto;padding:24px 20px 80px;columns:320px;column-gap:18px}'
+      +'figure{break-inside:avoid;margin:0 0 18px;background:#171a21;border:1px solid #2a2f3a;border-radius:12px;overflow:hidden}'
+      +'img{width:100%;display:block}figcaption{padding:12px 14px}.t{font-weight:600;margin-bottom:6px}'
+      +'.c{color:#8b93a3;font-size:13px;line-height:1.8}.m{color:#5c6472;font-size:11px;margin-top:8px}</style></head><body>'
+      +'<header><h1>行摄<span>集</span></h1><div class="sub">共 '+sorted.length+' 张照片 · 导出自旅行相册</div></header><main>'+figs+'</main></body></html>';
+    var blob=new Blob([html],{type:'text/html'});
+    var a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download='我的旅行相册.html'; a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); },5000);
+    toast('已导出 我的旅行相册.html');
+  });
+});
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+$('#btnSettings').addEventListener('click',function(){
+  var cfg=getCfg()||{};
+  $('#cfgBase').value=cfg.base||''; $('#cfgKey').value=cfg.key||''; $('#cfgModel').value=cfg.model||'';
+  dialog.showModal();
+});
+$('#cfgSave').addEventListener('click',function(){
+  localStorage.setItem('travel-album-cfg',JSON.stringify({
+    base:$('#cfgBase').value.trim(), key:$('#cfgKey').value.trim(), model:$('#cfgModel').value.trim()
+  }));
+  dialog.close(); toast('AI 设置已保存');
+});
+$('#cfgClear').addEventListener('click',function(){
+  localStorage.removeItem('travel-album-cfg');
+  $('#cfgBase').value=$('#cfgKey').value=$('#cfgModel').value='';
+  dialog.close(); toast('已清空 AI 设置');
+});
+
+/* ---------- 启动 ---------- */
+openDB().then(function(){
+  return idbAll();
+}).then(function(recs){
+  photos=recs.map(function(r){ r.url=URL.createObjectURL(r.blob); return r; });
+  renderManage(); renderBlog();
+}).catch(function(err){ toast('初始化失败：'+err.message); });
+})();
+</script>
+</body>
+</html>
