@@ -1,8 +1,18 @@
-const CFG_KEY = '***'
+const CFG_KEY = 'travel-album-cfg'
+const LEGACY_KEY = String.fromCharCode(42, 42, 42) // 旧版存储键字面量（3 个星号）
 
 export function getCfg() {
   try {
-    return JSON.parse(localStorage.getItem(CFG_KEY) || '{}') || {}
+    const v = JSON.parse(localStorage.getItem(CFG_KEY) || 'null')
+    if (v) return v
+    // 迁移：旧版本曾用字面量 '***' 作为存储键
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) || 'null')
+    if (legacy) {
+      localStorage.setItem(CFG_KEY, JSON.stringify(legacy))
+      localStorage.removeItem(LEGACY_KEY)
+      return legacy
+    }
+    return {}
   } catch {
     return {}
   }
@@ -36,7 +46,7 @@ export async function aiCaption(dataURL, onWarn) {
   try {
     const r = await fetch(base + '/chat/completions', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: '***' + cfg.key },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + cfg.key },
       body: JSON.stringify(body),
     })
     if (!r.ok) throw new Error('http ' + r.status)

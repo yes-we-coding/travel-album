@@ -2,7 +2,7 @@
 const API = 'https://api.github.com/repos/yes-we-coding/travel-album'
 
 function headers(token) {
-  return { Authorization: '***' + token, Accept: 'application/vnd.github+json' }
+  return { Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' }
 }
 
 function enc(path) {

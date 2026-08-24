@@ -153,7 +153,7 @@ async function aiCaption(downscaledBuf) {
   try {
     const r = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: '***' + key },
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
       body: JSON.stringify(body),
     })
     if (!r.ok) throw new Error('http ' + r.status)
