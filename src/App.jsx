@@ -138,10 +138,14 @@ export default function App() {
         }
 
         // 合并提交一次 captions
+        // 正确 UTF-8 → base64：用 TextEncoder 把字符串编为 UTF-8 字节，再 btoa
+        const capBytes = new TextEncoder().encode(JSON.stringify(captions, null, 2))
+        let capBin = ''
+        for (let i = 0; i < capBytes.length; i++) capBin += String.fromCharCode(capBytes[i])
         await putFile(
           cfg.ghToken,
           'public/photos/captions.json',
-          btoa(unescape(encodeURIComponent(JSON.stringify(captions, null, 2)))),
+          btoa(capBin),
           '相册：更新描述文案',
         )
         toast(`已提交 ${files.length} 张照片，网站约 1-2 分钟后自动更新`)
