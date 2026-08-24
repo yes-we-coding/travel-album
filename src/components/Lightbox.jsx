@@ -12,9 +12,10 @@ function utf8ToBase64(str) {
 }
 
 export default function Lightbox({ photo, onClose }) {
-  if (!photo) return null
-  const base = import.meta.env.BASE_URL || '/'
   const [busy, setBusy] = useState(false)
+  const base = import.meta.env.BASE_URL || '/'
+
+  if (!photo) return null
 
   async function handleDelete(e) {
     e.stopPropagation()
