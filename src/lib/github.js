@@ -18,6 +18,15 @@ export async function getText(token, path) {
   return atob(j.content.replace(/\n/g, ''))
 }
 
+/** 读取仓库里的文件元信息（含 sha），不存在返回 null */
+export async function getMeta(token, path) {
+  const r = await fetch(API + '/contents/' + enc(path), { headers: headers(token) })
+  if (r.status === 404) return null
+  if (!r.ok) throw new Error('读取失败 http ' + r.status)
+  const j = await r.json()
+  return { sha: j.sha, size: j.size, name: j.name, path: j.path }
+}
+
 /** 创建或覆盖文件并提交 */
 export async function putFile(token, path, base64, message) {
   // 文件已存在时 Contents API 要求带 sha
@@ -38,6 +47,27 @@ export async function putFile(token, path, base64, message) {
       /* ignore */
     }
     throw new Error('提交失败 http ' + r.status + (why ? '：' + why : ''))
+  }
+  return r.json()
+}
+
+/** 删除仓库里的文件（必须带 sha） */
+export async function deleteFile(token, path, sha, message) {
+  if (!sha) throw new Error('删除文件需要 sha')
+  const r = await fetch(API + '/contents/' + enc(path), {
+    method: 'DELETE',
+    headers: headers(token),
+    body: JSON.stringify({ message, sha }),
+  })
+  if (!r.ok) {
+    const t = await r.text()
+    let why = ''
+    try {
+      why = JSON.parse(t).message || ''
+    } catch {
+      /* ignore */
+    }
+    throw new Error('删除失败 http ' + r.status + (why ? '：' + why : ''))
   }
   return r.json()
 }
