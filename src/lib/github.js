@@ -15,7 +15,12 @@ export async function getText(token, path) {
   if (r.status === 404) return null
   if (!r.ok) throw new Error('读取失败 http ' + r.status)
   const j = await r.json()
-  return atob(j.content.replace(/\n/g, ''))
+  // atob 返回的是 Latin-1 字符串（每字符 0-255），实际内容是 UTF-8 字节，
+  // 必须经 TextDecoder 转码，否则会被当作 Latin-1 字符再二次 UTF-8 编码（乱码）。
+  const bin = atob(j.content.replace(/\n/g, ''))
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  return new TextDecoder('utf-8').decode(bytes)
 }
 
 /** 读取仓库里的文件元信息（含 sha），不存在返回 null */
