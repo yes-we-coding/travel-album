@@ -5,6 +5,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
+import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import exifr from 'exifr'
 import sharp from 'sharp'
@@ -19,7 +20,26 @@ fs.mkdirSync(thumbsDir, { recursive: true })
 fs.mkdirSync(largeDir, { recursive: true })
 
 /* ---------- 工具 ---------- */
-const pick = (a) => a[Math.floor(Math.random() * a.length)]
+// 按文件名做种子的确定性随机：同一张照片每次构建生成相同文案，
+// 避免无 captions 覆盖的照片每次部署文案都变。
+function hashSeed(str) {
+  let h = 2166136261
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+function mulberry32(seed) {
+  let a = seed >>> 0
+  return function () {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
 
 async function analyze(buf) {
   try {
@@ -59,7 +79,8 @@ async function analyze(buf) {
   }
 }
 
-function heuristicCaption(meta, an) {
+function heuristicCaption(meta, an, rand) {
+  const pick = (a) => a[Math.floor(rand() * a.length)]
   const parts = []
   parts.push(pick(['路上的某一瞬，', '快门按下的那一刻，', '走着走着，', '没什么特别的理由，', '偶然抬头，']))
   if (an.blue > 0.22) parts.push(pick(['天空澄澈，云也走得慢。', '抬头是一片通透的蓝。', '天很高，风很轻。']))
@@ -223,7 +244,9 @@ for (const file of files) {
 
   let caption = ov.caption ?? null
   if (caption === null && aiEnabled) {
-    const ck = `${file}|${st.size}|${st.mtimeMs}|${process.env.TRAVEL_AI_MODEL || 'qwen-vl-max'}`
+    // 内容哈希做缓存 key：git checkout / CI 上 mtime 会变，内容不会
+    const contentHash = crypto.createHash('sha1').update(buf).digest('hex').slice(0, 16)
+    const ck = `${contentHash}|${process.env.TRAVEL_AI_MODEL || 'qwen-vl-max'}`
     if (aiCache[ck]) caption = aiCache[ck]
     else {
       const small = await sharp(buf).rotate().resize({ width: 1024, withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer()
@@ -231,7 +254,7 @@ for (const file of files) {
       if (caption) aiCache[ck] = caption
     }
   }
-  if (caption === null) caption = heuristicCaption(meta, await analyze(buf))
+  if (caption === null) caption = heuristicCaption(meta, await analyze(buf), mulberry32(hashSeed(file)))
 
   const title = ov.title ?? defaultTitle(meta, file)
 

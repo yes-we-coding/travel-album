@@ -6,7 +6,8 @@ import { parseExif } from './lib/exif.js'
 import { analyzeImage, heuristicCaption, defaultTitle } from './lib/analyze.js'
 import { aiCaption, downscaledDataURL, getCfg } from './lib/ai.js'
 import { reverseGeo } from './lib/geo.js'
-import { checkToken, getText, putFile } from './lib/github.js'
+import { checkToken, getText, commitFiles } from './lib/github.js'
+import { sleep } from './lib/util.js'
 const ACCEPT = /\.(jpe?g|png|webp)$/i
 
 function readFile(f, mode) {
@@ -36,6 +37,15 @@ function sanitizeName(name) {
   return clean + '.' + ext
 }
 
+/** 重名避让：name.jpg → name-2.jpg → name-3.jpg …… */
+function uniquify(name, taken) {
+  const m = name.match(/^(.*?)(\.[^.]+)$/)
+  let i = 2
+  let cand = `${m[1]}-${i}${m[2]}`
+  while (taken.has(cand)) cand = `${m[1]}-${++i}${m[2]}`
+  return cand
+}
+
 export default function App() {
   const [photos, setPhotos] = useState([])
   const [loaded, setLoaded] = useState(false)
@@ -47,7 +57,6 @@ export default function App() {
   const [toastMsg, setToastMsg] = useState('')
   const toastTimer = useRef(null)
   const fileInputRef = useRef(null)
-  const manifestFetchedAt = useRef(0)
 
   const toast = useCallback((msg) => {
     setToastMsg(msg)
@@ -63,27 +72,35 @@ export default function App() {
     return r.json()
   }, [])
 
-  const loadManifest = useCallback(async () => {
-    try {
-      setPhotos(await fetchManifest())
-      manifestFetchedAt.current = Date.now()
-      setError('')
-    } catch (err) {
-      setError('加载相册清单失败：' + err.message)
-    } finally {
-      setLoaded(true)
-    }
-  }, [fetchManifest])
+  /* 上传 / 删除后轮询 manifest，直到远端构建完成（最长 ~5 分钟） */
+  const pollForUpdate = useCallback(
+    (prevKey) => {
+      ;(async () => {
+        for (let i = 0; i < 20; i++) {
+          await sleep(15000)
+          try {
+            const list = await fetchManifest()
+            if (list.map((p) => p.id).join('|') !== prevKey) {
+              setPhotos(list)
+              toast('相册已更新 ✓')
+              return
+            }
+          } catch {
+            /* 构建期间 manifest 可能短暂不可用，继续等 */
+          }
+        }
+        toast('部署时间较长，稍后可手动刷新查看')
+      })()
+    },
+    [fetchManifest, toast],
+  )
 
   useEffect(() => {
     // 初始加载：异步获取，不在 effect 里同步 setState
     let cancelled = false
     fetchManifest()
       .then((list) => {
-        if (!cancelled) {
-          setPhotos(list)
-          manifestFetchedAt.current = Date.now()
-        }
+        if (!cancelled) setPhotos(list)
       })
       .catch((err) => {
         if (!cancelled) setError('加载相册清单失败：' + err.message)
@@ -115,8 +132,13 @@ export default function App() {
         const tokErr = await checkToken(cfg.ghToken)
         if (tokErr) throw new Error(tokErr)
 
-        const captions = (await getText(cfg.ghToken, 'public/photos/captions.json').then((t) => JSON.parse(t || '{}'))) || {}
+        // 已占用的文件名（避让重名，防止静默覆盖旧照片）
+        const remoteCaps = JSON.parse((await getText(cfg.ghToken, 'public/photos/captions.json')) || '{}')
+        const taken = new Set([...photos.map((p) => p.src), ...Object.keys(remoteCaps)])
 
+        const blobs = {} // path -> base64
+        const newCaps = {} // name -> 描述条目
+        let renamed = 0
         for (let i = 0; i < files.length; i++) {
           const f = files[i]
           toast(`处理中 ${i + 1}/${files.length}：${f.name}`)
@@ -128,28 +150,35 @@ export default function App() {
           const ai = await aiCaption(downscaledDataURL(img, 1024), toast)
           const caption = ai || heuristicCaption(meta, analyzeImage(img))
           const title = defaultTitle(meta, f.name)
-          const name = sanitizeName(f.name)
 
-          // 提交源图
-          const b64 = dataURL.slice(dataURL.indexOf(',') + 1)
-          await putFile(cfg.ghToken, `public/photos/${name}`, b64, `相册：添加 ${name}`)
+          let name = sanitizeName(f.name)
+          if (taken.has(name)) {
+            name = uniquify(name, taken)
+            renamed++
+          }
+          taken.add(name)
 
-          captions[name] = { title, caption, ...(meta.place ? { place: meta.place } : {}) }
+          blobs[`public/photos/${name}`] = dataURL.slice(dataURL.indexOf(',') + 1)
+          newCaps[name] = { title, caption, ...(meta.place ? { place: meta.place } : {}) }
         }
 
-        // 合并提交一次 captions
-        // 正确 UTF-8 → base64：用 TextEncoder 把字符串编为 UTF-8 字节，再 btoa
-        const capBytes = new TextEncoder().encode(JSON.stringify(captions, null, 2))
-        let capBin = ''
-        for (let i = 0; i < capBytes.length; i++) capBin += String.fromCharCode(capBytes[i])
-        await putFile(
-          cfg.ghToken,
-          'public/photos/captions.json',
-          btoa(capBin),
-          '相册：更新描述文案',
+        // 单 commit 提交全部照片 + 合并 captions（只触发一次 Actions 构建，冲突自动重试）
+        toast('提交到仓库…')
+        const prevKey = photos.map((p) => p.id).join('|')
+        await commitFiles(cfg.ghToken, {
+          message: `相册：添加 ${files.length} 张照片`,
+          files: blobs,
+          edits: {
+            'public/photos/captions.json': (cur) =>
+              JSON.stringify({ ...JSON.parse(cur || '{}'), ...newCaps }, null, 2),
+          },
+        })
+        toast(
+          `已提交 ${files.length} 张照片` +
+            (renamed ? `（${renamed} 个重名已自动改名）` : '') +
+            '，等待自动部署…',
         )
-        toast(`已提交 ${files.length} 张照片，网站约 1-2 分钟后自动更新`)
-        setTimeout(loadManifest, 90 * 1000)
+        pollForUpdate(prevKey)
       } catch (err) {
         toast('上传失败：' + err.message)
       } finally {
@@ -157,7 +186,7 @@ export default function App() {
         if (fileInputRef.current) fileInputRef.current.value = ''
       }
     },
-    [toast, loadManifest],
+    [toast, photos, pollForUpdate],
   )
 
   /* ---------- 全局拖拽 ---------- */
@@ -246,7 +275,16 @@ export default function App() {
           </section>
         )}
       </main>
-      <Lightbox photo={lightbox} onClose={() => setLightbox(null)} />
+      <Lightbox
+        photo={lightbox}
+        onClose={() => setLightbox(null)}
+        onDeleted={(id) => {
+          const prevKey = photos.map((p) => p.id).join('|')
+          setPhotos((ps) => ps.filter((p) => p.id !== id))
+          toast('已删除，等待自动部署同步…')
+          pollForUpdate(prevKey)
+        }}
+      />
       <SettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} toast={toast} />
       <footer>行摄集 · 把路上的光留住</footer>
       <div id="toast" className={toastMsg ? 'show' : ''}>

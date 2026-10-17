@@ -1,17 +1,9 @@
 import { useState } from 'react'
 import { metaLine } from '../lib/util.js'
 import { getCfg } from '../lib/ai.js'
-import { checkToken, getText, putFile, deleteFile, getMeta } from '../lib/github.js'
+import { checkToken, commitFiles } from '../lib/github.js'
 
-// 正确 UTF-8 → base64（与 App.jsx 上传端保持一致）
-function utf8ToBase64(str) {
-  const bytes = new TextEncoder().encode(str)
-  let bin = ''
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-  return btoa(bin)
-}
-
-export default function Lightbox({ photo, onClose }) {
+export default function Lightbox({ photo, onClose, onDeleted }) {
   const [busy, setBusy] = useState(false)
   const base = import.meta.env.BASE_URL || '/'
 
@@ -24,7 +16,7 @@ export default function Lightbox({ photo, onClose }) {
       alert('请先在「设置」里填写 GitHub token')
       return
     }
-    if (!confirm(`确定要删除「${photo.title || photo.id}」吗？\n\n此操作会从仓库里删除源图、缩略图、大图，以及 captions.json 里的描述。不可撤销。`)) {
+    if (!confirm(`确定要删除「${photo.title || photo.id}」吗？\n\n此操作会从仓库里删除源图（缩略图 / 大图会随下次构建自动清理），以及 captions.json 里的描述。不可撤销。`)) {
       return
     }
     setBusy(true)
@@ -32,34 +24,24 @@ export default function Lightbox({ photo, onClose }) {
       const tokErr = await checkToken(cfg.ghToken)
       if (tokErr) throw new Error(tokErr)
 
-      const fileName = photo.src  // 例如 "17.jpg"
-      const photoPath = `public/photos/${fileName}`
+      const fileName = photo.src // 例如 "17.jpg"
+      // 单 commit：删源图 + 合并 captions（缩略图 / 大图是构建产物，会随重新部署消失）
+      await commitFiles(cfg.ghToken, {
+        message: `相册：删除 ${fileName}`,
+        deletes: [`public/photos/${fileName}`],
+        edits: {
+          'public/photos/captions.json': (cur) => {
+            if (!cur) return null
+            const caps = JSON.parse(cur)
+            if (!(fileName in caps)) return null
+            delete caps[fileName]
+            return JSON.stringify(caps, null, 2)
+          },
+        },
+      })
 
-      // 1. 取源图 sha 并删除
-      const meta = await getMeta(cfg.ghToken, photoPath)
-      if (meta) {
-        await deleteFile(cfg.ghToken, photoPath, meta.sha, `相册：删除 ${fileName}`)
-      }
-
-      // 2. 从 captions.json 删除条目
-      const captionsText = await getText(cfg.ghToken, 'public/photos/captions.json')
-      if (captionsText) {
-        const captions = JSON.parse(captionsText)
-        if (captions[fileName]) {
-          delete captions[fileName]
-          await putFile(
-            cfg.ghToken,
-            'public/photos/captions.json',
-            utf8ToBase64(JSON.stringify(captions, null, 2)),
-            `相册：移除 ${fileName} 描述`,
-          )
-        }
-      }
-
-      alert('已删除，刷新页面查看（相册约 1-2 分钟后自动更新）')
       onClose()
-      // 强制刷新 manifest
-      setTimeout(() => location.reload(), 200)
+      if (onDeleted) onDeleted(photo.id)
     } catch (err) {
       alert('删除失败：' + err.message)
     } finally {
