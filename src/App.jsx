@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import BlogFigure from './components/BlogFigure.jsx'
 import Lightbox from './components/Lightbox.jsx'
 import SettingsDialog from './components/SettingsDialog.jsx'
@@ -70,6 +70,19 @@ export default function App() {
     const r = await fetch(base + 'photos/manifest.json', { cache: 'no-cache' })
     if (!r.ok) throw new Error('http ' + r.status)
     return r.json()
+  }, [])
+
+  /* ---------- 灯箱开关：同步 #photo=id 直链 ---------- */
+  const openLightbox = useCallback((p) => {
+    setLightbox(p)
+    history.replaceState(null, '', '#photo=' + encodeURIComponent(p.id))
+  }, [])
+
+  const closeLightbox = useCallback(() => {
+    setLightbox(null)
+    if (location.hash.startsWith('#photo=')) {
+      history.replaceState(null, '', location.pathname + location.search)
+    }
   }, [])
 
   /* 上传 / 删除后轮询 manifest，直到远端构建完成（最长 ~5 分钟） */
@@ -205,20 +218,41 @@ export default function App() {
     }
   }, [uploadFiles])
 
+  /* ---------- 直链打开：#photo=id ---------- */
+  const deepLinked = useRef(false)
+  useEffect(() => {
+    if (!loaded || deepLinked.current) return
+    deepLinked.current = true
+    const m = location.hash.match(/^#photo=(.+)$/)
+    if (m) {
+      const p = photos.find((x) => x.id === decodeURIComponent(m[1]))
+      if (p) openLightbox(p)
+    }
+  }, [loaded, photos, openLightbox])
+
   /* ---------- 灯箱键盘 ---------- */
   useEffect(() => {
     if (!lightbox) return
     const onKey = (e) => {
-      if (e.key === 'Escape') setLightbox(null)
+      if (e.key === 'Escape') closeLightbox()
       const idx = photos.findIndex((p) => p.id === lightbox.id)
-      if (e.key === 'ArrowRight' && idx < photos.length - 1) setLightbox(photos[idx + 1])
-      if (e.key === 'ArrowLeft' && idx > 0) setLightbox(photos[idx - 1])
+      if (e.key === 'ArrowRight' && idx < photos.length - 1) openLightbox(photos[idx + 1])
+      if (e.key === 'ArrowLeft' && idx > 0) openLightbox(photos[idx - 1])
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [lightbox, photos])
+  }, [lightbox, photos, openLightbox, closeLightbox])
 
   const count = photos.length
+
+  /* 时间线分节：按年月分组（manifest 已按时间升序） */
+  const groups = []
+  for (const p of photos) {
+    const label = p.dt ? `${p.dt.slice(0, 4)}年${Number(p.dt.slice(5, 7))}月` : '未标注时间'
+    const last = groups[groups.length - 1]
+    if (last && last.label === label) last.items.push(p)
+    else groups.push({ label, items: [p] })
+  }
 
   return (
     <>
@@ -269,15 +303,20 @@ export default function App() {
           <div className="empty">相册还是空的，上传第一张旅行照片吧。</div>
         ) : (
           <section id="blogView">
-            {photos.map((p) => (
-              <BlogFigure key={p.id} photo={p} onOpen={setLightbox} />
+            {groups.map((g) => (
+              <Fragment key={g.label}>
+                <div className="tl-header">{g.label}</div>
+                {g.items.map((p) => (
+                  <BlogFigure key={p.id} photo={p} onOpen={openLightbox} />
+                ))}
+              </Fragment>
             ))}
           </section>
         )}
       </main>
       <Lightbox
         photo={lightbox}
-        onClose={() => setLightbox(null)}
+        onClose={closeLightbox}
         onDeleted={(id) => {
           const prevKey = photos.map((p) => p.id).join('|')
           setPhotos((ps) => ps.filter((p) => p.id !== id))

@@ -5,7 +5,15 @@ export default function BlogFigure({ photo, onOpen }) {
   const ml = metaLine(photo)
   return (
     <figure onClick={() => onOpen(photo)}>
-      <img src={base + photo.thumb} alt={photo.title} loading="lazy" width={photo.w} height={photo.h} />
+      <img
+        src={base + photo.thumb}
+        alt={photo.title}
+        loading="lazy"
+        decoding="async"
+        width={photo.w}
+        height={photo.h}
+        style={photo.lqip ? { backgroundImage: `url("${photo.lqip}")`, backgroundSize: 'cover' } : undefined}
+      />
       <figcaption>
         <div className="t">{photo.title || '未命名'}</div>
         <div className="c">{photo.caption || ''}</div>

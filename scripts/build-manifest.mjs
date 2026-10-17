@@ -226,15 +226,19 @@ for (const file of files) {
       ? { lat: ex.latitude, lon: ex.longitude }
       : null
 
-  // 缩略图 / 大图（缓存：已存在且比源新就跳过）
-  const thumbPath = path.join(thumbsDir, stem + '.jpg')
-  const largePath = path.join(largeDir, stem + '.jpg')
+  // 缩略图 / 大图（WebP，缓存：已存在且比源新就跳过）
+  const thumbPath = path.join(thumbsDir, stem + '.webp')
+  const largePath = path.join(largeDir, stem + '.webp')
   if (!(fs.existsSync(thumbPath) && fs.statSync(thumbPath).mtimeMs > st.mtimeMs)) {
-    await sharp(buf).rotate().resize({ width: 800, withoutEnlargement: true }).jpeg({ quality: 82 }).toFile(thumbPath)
+    await sharp(buf).rotate().resize({ width: 800, withoutEnlargement: true }).webp({ quality: 72 }).toFile(thumbPath)
   }
   if (!(fs.existsSync(largePath) && fs.statSync(largePath).mtimeMs > st.mtimeMs)) {
-    await sharp(buf).rotate().resize({ width: 1800, withoutEnlargement: true }).jpeg({ quality: 85 }).toFile(largePath)
+    await sharp(buf).rotate().resize({ width: 1800, withoutEnlargement: true }).webp({ quality: 78 }).toFile(largePath)
   }
+
+  // LQIP：24px 模糊占位图（base64 内联进 manifest，首屏先出轮廓）
+  const lqipBuf = await sharp(buf).rotate().resize({ width: 24, withoutEnlargement: true }).webp({ quality: 40 }).toBuffer()
+  const lqip = 'data:image/webp;base64,' + lqipBuf.toString('base64')
 
   // 文案：captions.json 覆盖 > AI（有缓存）> 本地兜底
   const ov = captionsOverride[file] || {}
@@ -261,8 +265,9 @@ for (const file of files) {
   entries.push({
     id: stem,
     src: file,
-    thumb: `photos/thumbs/${stem}.jpg`,
-    large: `photos/large/${stem}.jpg`,
+    thumb: `photos/thumbs/${stem}.webp`,
+    large: `photos/large/${stem}.webp`,
+    lqip,
     w: md.width,
     h: md.height,
     dt,
@@ -272,6 +277,17 @@ for (const file of files) {
     caption,
   })
   console.log(`  ✓ ${file}` + (dt ? ` (${dt})` : '') + (place ? ` @${place}` : ''))
+}
+
+// 清理生成物目录里已不存在源图 / 旧格式（.jpg）的残留文件
+const keepNames = new Set(files.map((f) => path.parse(f).name + '.webp'))
+for (const dir of [thumbsDir, largeDir]) {
+  for (const f of fs.readdirSync(dir)) {
+    if (!keepNames.has(f)) {
+      fs.rmSync(path.join(dir, f))
+      console.log('  - 清理残留', path.relative(photosDir, path.join(dir, f)))
+    }
+  }
 }
 
 saveJson(path.join(root, 'scripts/geo-cache.json'), geoCache)

@@ -51,7 +51,14 @@ export default function Lightbox({ photo, onClose, onDeleted }) {
 
   return (
     <div id="lightbox" onClick={onClose}>
-      <img src={base + photo.large} alt={photo.title} onClick={(e) => e.stopPropagation()} />
+      <img
+        src={base + photo.large}
+        alt={photo.title}
+        width={photo.w}
+        height={photo.h}
+        style={photo.lqip ? { backgroundImage: `url("${photo.lqip}")`, backgroundSize: 'cover' } : undefined}
+        onClick={(e) => e.stopPropagation()}
+      />
       <div className="cap" onClick={(e) => e.stopPropagation()}>
         <div className="t">{photo.title || ''}</div>
         <div className="c">{photo.caption || ''}</div>

@@ -186,6 +186,25 @@ main {
   overflow: hidden;
   cursor: zoom-in;
 }
+/* 时间线分节标题：横跨整个瀑布流 */
+#blogView .tl-header {
+  -webkit-column-span: all;
+  column-span: all;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 4px 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+#blogView .tl-header::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
 #blogView img {
   width: 100%;
   height: auto;
