@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "manifest": "node scripts/build-manifest.mjs",
+    "compress": "node scripts/compress-sources.mjs",
     "build": "node scripts/build-manifest.mjs && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
